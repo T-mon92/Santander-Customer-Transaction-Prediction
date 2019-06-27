@@ -15,6 +15,9 @@ class LoadData(luigi.Task):
     def requires(self):
         return DataFile(self.data_type)
 
+    def output(self):
+        return luigi.LocalTarget(posify(STG1_PATH / f'{self.data_type}_luigi.csv'))
+
     def run(self):
         data_req = self.input()
 
@@ -22,14 +25,12 @@ class LoadData(luigi.Task):
 
         data_out = self.output()
 
-        save_csv(data, data_out.path, STG1_PATH)
-
-    def output(self):
-        return luigi.LocalTarget(posify(STG1_PATH / f'{self.data_type}_after_luigi.csv'))
+        with self.output().open('w') as csv_file:
+            data.to_csv(csv_file, index = False)
 
 
 class DataFile(luigi.ExternalTask):
     data_type = luigi.Parameter(default='train')
 
     def output(self):
-        return luigi.LocalTarget(posify(DATA_PATH / f'{self.data_type}_after_luigi.csv'))
+        return luigi.LocalTarget(posify(DATA_PATH / f'{self.data_type}.csv'))
