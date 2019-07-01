@@ -10,7 +10,7 @@ import luigi
 from santander_luigi.utils.data_utils import load_csv
 from santander_luigi.utils.pipeline_utils import posify
 
-from santander_luigi.constants import STG1_PATH, DATA_PATH
+from santander_luigi.constants import STG1_PATH, RESULT_PATH, DATA_PATH
 
 
 class DataFile(luigi.ExternalTask):
@@ -60,7 +60,7 @@ class ExtractReal(luigi.Task):
         return (DataFile('train'), DataFile('test'), GetRealExamples())
 
     def output(self):
-        return luigi.LocalTarget(posify(STG1_PATH / f'submission.csv'))
+        return luigi.LocalTarget(posify(RESULT_PATH / f'submission.csv'))
 
     def run(self):
 
