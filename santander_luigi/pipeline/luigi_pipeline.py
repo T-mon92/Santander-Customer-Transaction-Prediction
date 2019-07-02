@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from sklearn.metrics import roc_auc_score
 import pickle
 from pathlib import Path
 
@@ -68,9 +67,9 @@ class MakeFolds(luigi.Task):
         data: pd.DataFrame = load_csv(self.input().path)
         folds = create_folds(data)
 
-        path = Path(self.output().path)
+        folds_path = Path(self.output().path)
 
-        with path.open('wb') as fs_output:
+        with folds_path.open('wb') as fs_output:
             pickle.dump(folds, fs_output, protocol=pickle.HIGHEST_PROTOCOL)
 
 
