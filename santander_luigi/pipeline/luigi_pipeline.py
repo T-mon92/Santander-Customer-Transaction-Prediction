@@ -9,6 +9,7 @@ import luigi
 
 from santander_luigi.utils.data_utils import load_csv
 from santander_luigi.utils.pipeline_utils import posify
+from santander_luigi.features.make_features import make_FE_features
 
 from santander_luigi.constants import STG1_PATH, RESULT_PATH, DATA_PATH
 
@@ -92,29 +93,7 @@ class ExtractReal(luigi.Task):
             X_train, y_train = train.iloc[trn_idx][features], train.iloc[trn_idx]['target']
             X_valid, y_valid = train.iloc[val_idx][features], train.iloc[val_idx]['target']
 
-            for col in tqdm(features):
-                gr = data[col].value_counts()
-                gr_bin = data.groupby(col)[col].count() > 1
-
-                X_train[col + '_un'] = X_train[col].map(gr).astype('category').cat.codes
-                X_valid[col + '_un'] = X_valid[col].map(gr).astype('category').cat.codes
-                test[col + '_un'] = test[col].map(gr).astype('category').cat.codes
-
-                X_train[col + '_un_bin'] = X_train[col].map(gr_bin).astype('category').cat.codes
-                X_valid[col + '_un_bin'] = X_valid[col].map(gr_bin).astype('category').cat.codes
-                test[col + '_un_bin'] = test[col].map(gr_bin).astype('category').cat.codes
-
-                X_train[col + '_raw_mul'] = X_train[col] * X_train[col + '_un_bin']
-                X_valid[col + '_raw_mul'] = X_valid[col] * X_valid[col + '_un_bin']
-                test[col + '_raw_mul'] = test[col] * test[col + '_un_bin']
-
-                X_train[col + '_raw_mul_2'] = X_train[col] * X_train[col + '_un']
-                X_valid[col + '_raw_mul_2'] = X_valid[col] * X_valid[col + '_un']
-                test[col + '_raw_mul_2'] = test[col] * test[col + '_un']
-
-                X_train[col + '_raw_mul_3'] = X_train[col + '_un_bin'] * X_train[col + '_un']
-                X_valid[col + '_raw_mul_3'] = X_valid[col + '_un_bin'] * X_valid[col + '_un']
-                test[col + '_raw_mul_3'] = test[col + '_un_bin'] * test[col + '_un']
+            X_train, X_valid, test = make_FE_features(X_train, X_valid, test, data, features)
 
             _train = Pool(X_train, label=y_train)
             _valid = Pool(X_valid, label=y_valid)
