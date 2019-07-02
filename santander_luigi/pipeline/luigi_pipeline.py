@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedKFold
 from catboost import Pool, CatBoostClassifier
-from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 
 import luigi
@@ -10,11 +9,13 @@ import luigi
 from santander_luigi.utils.data_utils import load_csv
 from santander_luigi.utils.pipeline_utils import posify
 from santander_luigi.features.make_features import make_FE_features
+from santander_luigi.train.train_models import train_catboost
 
 from santander_luigi.constants import STG1_PATH, RESULT_PATH, DATA_PATH
 
 
 class DataFile(luigi.ExternalTask):
+
     data_type = luigi.Parameter(default='train')
 
     def output(self):
@@ -22,6 +23,7 @@ class DataFile(luigi.ExternalTask):
 
 
 class GetRealExamples(luigi.Task):
+
     def requires(self):
         return (DataFile('train'), DataFile('test'))
 
@@ -54,7 +56,6 @@ class GetRealExamples(luigi.Task):
 
 
 class GetSubmit(luigi.Task):
-    data_type = luigi.Parameter(default='train')
 
     def requires(self):
         return (DataFile('train'), DataFile('test'), GetRealExamples())
@@ -72,18 +73,6 @@ class GetSubmit(luigi.Task):
         oof = np.zeros(len(train))
         predictions = np.zeros(len(test))
 
-        model = CatBoostClassifier(loss_function="Logloss",
-                                   eval_metric="AUC",
-                                   task_type="GPU",
-                                   learning_rate=0.01,
-                                   iterations=70000,
-                                   l2_leaf_reg=50,
-                                   random_seed=42,
-                                   od_type="Iter",
-                                   depth=5,
-                                   early_stopping_rounds=15000,
-                                   border_count=64
-                                   )
 
         for fold_, (trn_idx, val_idx) in enumerate(folds.split(train.values, train.target.values)):
             print("Fold {}".format(fold_))
@@ -92,15 +81,10 @@ class GetSubmit(luigi.Task):
 
             X_train, X_valid, test = make_FE_features(X_train, X_valid, test, data, features)
 
-            _train = Pool(X_train, label=y_train)
-            _valid = Pool(X_valid, label=y_valid)
-            clf = model.fit(_train,
-                            eval_set=_valid,
-                            use_best_model=True,
-                            verbose=5000)
-            pred = clf.predict_proba(X_valid)[:, 1]
+            clf, pred, score = train_catboost(X_train, y_train, X_valid, y_valid)
+
             oof[val_idx] = pred
-            print("  auc = ", roc_auc_score(y_valid, pred))
+            print("  auc = ", score)
             predictions += clf.predict_proba(test.drop('ID_code', axis=1))[:, 1] / folds.n_splits
         print("CV score: {:<8.5f}".format(roc_auc_score(train.target, oof)))
 
