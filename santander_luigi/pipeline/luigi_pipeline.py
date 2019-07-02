@@ -1,17 +1,18 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import StratifiedKFold
-from catboost import Pool, CatBoostClassifier
 from sklearn.metrics import roc_auc_score
+import pickle
+from pathlib import Path
 
 import luigi
 
-from santander_luigi.utils.data_utils import load_csv
+from santander_luigi.utils.data_utils import load_csv, load_pickle
 from santander_luigi.utils.pipeline_utils import posify
 from santander_luigi.features.make_features import make_FE_features
 from santander_luigi.train.train_models import train_catboost
+from santander_luigi.validation.make_validation import create_folds
 
-from santander_luigi.constants import STG1_PATH, RESULT_PATH, DATA_PATH
+from santander_luigi.constants import STG1_PATH, STG2_PATH, RESULT_PATH, DATA_PATH
 
 
 class DataFile(luigi.ExternalTask):
@@ -31,7 +32,8 @@ class GetRealExamples(luigi.Task):
         return luigi.LocalTarget(posify(STG1_PATH / f'data.csv'))
 
     def run(self):
-        train, test = load_csv(self.input()[0].path), load_csv(self.input()[1].path)
+        samples_req = self.input()
+        train, test = load_csv(samples_req[0].path), load_csv(samples_req[1].path)
 
         df_data = test.drop(['ID_code'], axis=1)
         df_data = df_data.values
@@ -47,34 +49,54 @@ class GetRealExamples(luigi.Task):
 
         test_real = test.iloc[real_samples_indexes]
 
-
         data = train.append(test_real)
 
         with self.output().open('w') as csv_file:
             data.to_csv(csv_file, index=False)
 
 
+class MakeFolds(luigi.Task):
+
+    def requires(self):
+        return DataFile('train')
+
+    def output(self):
+        return luigi.LocalTarget(posify(STG2_PATH / 'folds.pickle'))
+
+    def run(self):
+
+        data: pd.DataFrame = load_csv(self.input().path)
+        folds = create_folds(data)
+
+        path = Path(self.output().path)
+
+        with path.open('wb') as fs_output:
+            pickle.dump(folds, fs_output, protocol=pickle.HIGHEST_PROTOCOL)
+
+
 
 class GetSubmit(luigi.Task):
 
     def requires(self):
-        return (DataFile('train'), DataFile('test'), GetRealExamples())
+        return (DataFile('train'), DataFile('test'), GetRealExamples(), MakeFolds())
 
     def output(self):
         return luigi.LocalTarget(posify(RESULT_PATH / f'submission.csv'))
 
     def run(self):
 
-        train, test, data = load_csv(self.input()[0].path), load_csv(self.input()[1].path), load_csv(self.input()[2].path)
+        submit_req = self.input()
+        train, test, data = load_csv(submit_req[0].path), load_csv(submit_req[1].path), load_csv(submit_req[2].path)
+
+        folds = load_pickle(submit_req[3].path)
 
         features = train.drop(['ID_code', 'target'], axis=1).columns.tolist()
 
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
         oof = np.zeros(len(train))
         predictions = np.zeros(len(test))
 
 
-        for fold_, (trn_idx, val_idx) in enumerate(folds.split(train.values, train.target.values)):
+        for fold_, (trn_idx, val_idx) in enumerate(folds):
             print("Fold {}".format(fold_))
             X_train, y_train = train.iloc[trn_idx][features], train.iloc[trn_idx]['target']
             X_valid, y_valid = train.iloc[val_idx][features], train.iloc[val_idx]['target']
