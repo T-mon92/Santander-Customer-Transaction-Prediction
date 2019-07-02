@@ -5,7 +5,7 @@ from pathlib import Path
 
 import luigi
 
-from santander_luigi.utils.data_utils import load_csv, load_pickle
+from santander_luigi.utils.data_utils import load_csv, load_pickle, save_pickle
 from santander_luigi.utils.pipeline_utils import posify
 from santander_luigi.features.make_features import make_FE_features
 from santander_luigi.train.train_models import train_catboost
@@ -67,10 +67,7 @@ class MakeFolds(luigi.Task):
         data: pd.DataFrame = load_csv(self.input().path)
         folds = create_folds(data)
 
-        folds_path = Path(self.output().path)
-
-        with folds_path.open('wb') as fs_output:
-            pickle.dump(folds, fs_output, protocol=pickle.HIGHEST_PROTOCOL)
+        save_pickle(folds, Path(self.output().path))
 
 
 class TrainFoldsModel(luigi.Task):
@@ -116,18 +113,9 @@ class TrainFoldsModel(luigi.Task):
             models.append(clf)
             scores.append(score)
 
-        path_models = Path(self.output()['models'].path)
-        path_predictions = Path(self.output()['predictions'].path)
-        path_features = Path(self.output()['features'].path)
-
-        with path_models.open('wb') as models_output:
-            pickle.dump(models, models_output, protocol=pickle.HIGHEST_PROTOCOL)
-
-        with path_predictions.open('wb') as preds_output:
-            pickle.dump(oof, preds_output, protocol=pickle.HIGHEST_PROTOCOL)
-
-        with path_features.open('wb') as feat_output:
-            pickle.dump(features, feat_output, protocol=pickle.HIGHEST_PROTOCOL)
+        save_pickle(models, Path(self.output()['models'].path))
+        save_pickle(oof, Path(self.output()['predictions'].path))
+        save_pickle(features, Path(self.output()['features'].path))
 
 
 class GetSubmit(luigi.Task):
