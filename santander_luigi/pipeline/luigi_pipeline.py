@@ -29,8 +29,7 @@ class GetRealExamples(luigi.Task):
         return luigi.LocalTarget(posify(STG1_PATH / f'data.csv'))
 
     def run(self):
-        train = load_csv(self.input()[0].path)
-        test = load_csv(self.input()[1].path)
+        train, test = load_csv(self.input()[0].path), load_csv(self.input()[1].path)
 
         df_data = test.drop(['ID_code'], axis=1)
         df_data = df_data.values
@@ -54,7 +53,7 @@ class GetRealExamples(luigi.Task):
 
 
 
-class ExtractReal(luigi.Task):
+class GetSubmit(luigi.Task):
     data_type = luigi.Parameter(default='train')
 
     def requires(self):
@@ -65,9 +64,7 @@ class ExtractReal(luigi.Task):
 
     def run(self):
 
-        train = load_csv(self.input()[0].path)
-        test = load_csv(self.input()[1].path)
-        data = load_csv(self.input()[2].path)
+        train, test, data = load_csv(self.input()[0].path), load_csv(self.input()[1].path), load_csv(self.input()[2].path)
 
         features = train.drop(['ID_code', 'target'], axis=1).columns.tolist()
 
