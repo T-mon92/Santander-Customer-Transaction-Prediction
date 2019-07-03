@@ -91,9 +91,9 @@ class TrainFoldsModel(luigi.Task):
         data_req = self.input()['data']
         folds_req = self.input()['folds']
 
-        train: pd.DataFrame = load_csv(train_req.path)
-        data: pd.DataFrame = load_csv(data_req.path)
-        folds: list = load_pickle(folds_req.path)
+        train = load_csv(train_req.path)
+        data = load_csv(data_req.path)
+        folds = load_pickle(folds_req.path)
 
         features = train.drop(['ID_code', 'target'], axis=1).columns.tolist()
 
@@ -122,6 +122,7 @@ class GetSubmit(luigi.Task):
 
     def requires(self):
         return {'test_df': DataFile('test'),
+                'data': GetRealExamples(),
                 'trained_model': TrainFoldsModel()
                 }
 
@@ -131,17 +132,21 @@ class GetSubmit(luigi.Task):
     def run(self):
 
         test_req = self.input()['test_df']
+        data_req = self.input()['data']
         models_req = self.input()['trained_model']['models']
         features_req = self.input()['trained_model']['features']
 
         test = load_csv(test_req.path)
+        data = load_csv(data_req.path)
         models = load_pickle(models_req.path)
         features = load_pickle(features_req.path)
 
-        predictions = np.zeros(shape=(len(features), len(models)))
+        predictions = np.zeros(shape=(len(test), len(models)))
+
+        test = make_FE_features(test, data, features)
 
         for ind, model in enumerate(models):
-            predictions[:, ind] = model.predict(test[features])
+            predictions[:, ind] = model.predict(test.drop('ID_code', axis = 1))
 
         predictions = np.mean(predictions, axis=1)
 
