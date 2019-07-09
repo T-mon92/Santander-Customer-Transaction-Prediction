@@ -149,7 +149,9 @@ class TrainFoldsModel(luigi.Task):
 class GetSubmit(luigi.Task):
 
     def requires(self):
-        return TrainFoldsModel()
+         return {'data': GetRealExamples(),
+                'trained_model': TrainFoldsModel()
+                }
 
 
     def output(self):
@@ -157,18 +159,22 @@ class GetSubmit(luigi.Task):
 
     def run(self):
 
-        test_req = self.input()['test_df']
-        models_req = self.input()['models']
-        features_req = self.input()['features']
+        data_req = self.input()['data']
+        test_req = self.input()['trained_model']['test_df']
+        models_req = self.input()['trained_model']['models']
+        features_req = self.input()['trained_model']['features']
 
         test = load_csv(test_req.path)
+        data = load_csv(data_req.path)
         models = load_pickle(models_req.path)
         features = load_pickle(features_req.path)
 
-        predictions = np.zeros(shape=(len(features), len(models)))
+        predictions = np.zeros(shape=(len(test), len(models)))
+
+        test = make_FE_features(test, data, features)
 
         for ind, model in enumerate(models):
-            predictions[:, ind] = model.predict(test[features])
+            predictions[:, ind] = model.predict(test.drop('ID_code', axis = 1))
 
         predictions = np.mean(predictions, axis=1)
 
