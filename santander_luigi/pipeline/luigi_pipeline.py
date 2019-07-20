@@ -2,8 +2,6 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 
-from sklearn.model_selection import StratifiedKFold
-
 import luigi
 
 from santander_luigi.utils.data_utils import load_csv, load_pickle, save_pickle
@@ -83,33 +81,26 @@ class TrainFoldsModel(luigi.Task):
 
     def output(self):
         return {
-            #'models': luigi.LocalTarget(posify(STG4_PATH / f'catboost_models.pickle')),
-            #'predictions': luigi.LocalTarget(posify(STG4_PATH / f'catboost_oof_preds.pickle')),
-            #'features': luigi.LocalTarget(posify(STG4_PATH / f'feature_list.pickle')),
-            #'test_df': luigi.LocalTarget(posify(STG4_PATH / f'test.csv'))
-            'predictions': luigi.LocalTarget(posify(STG3_PATH / f'predictions.pickle')),
+            'predictions': luigi.LocalTarget(posify(STG3_PATH / f'predictions.pickle'))
         }
 
     def run(self):
         train_req = self.input()['train']
         test_req = self.input()['test']
         data_req = self.input()['data']
-        #folds_req = self.input()['folds']
+        folds_req = self.input()['folds']
 
         train = load_csv(train_req.path)
         test = load_csv((test_req.path))
         data = load_csv(data_req.path)
-        #folds = load_pickle(folds_req.path)
+        folds = load_pickle(folds_req.path)
 
         features = train.drop(['ID_code', 'target'], axis=1).columns.tolist()
 
         oof = np.zeros(len(train))
         prediction = np.zeros(len(test))
-        folds = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-        #models = list()
-        #scores = list()
 
-        for fold_, (trn_idx, val_idx) in enumerate(folds.split(train.values, train.target.values)):
+        for fold_, (trn_idx, val_idx) in enumerate(folds):
             X_train, y_train = train.iloc[trn_idx][features], train.iloc[trn_idx]['target']
             X_valid, y_valid = train.iloc[val_idx][features], train.iloc[val_idx]['target']
 
@@ -117,20 +108,10 @@ class TrainFoldsModel(luigi.Task):
 
             clf, pred, score = train_catboost(X_train, y_train, X_valid, y_valid)
 
-            #score = roc_auc_score(y_valid, pred)
-
             oof[val_idx] = pred
-            prediction += clf.predict_proba(test.drop('ID_code', axis=1))[:, 1] / folds.n_splits
-            #models.append(clf)
-            #scores.append(score)
+            prediction += clf.predict_proba(test.drop('ID_code', axis=1))[:, 1] / len(folds)
 
-        #save_pickle(models, Path(self.output()['models'].path))
-        #save_pickle(oof, Path(self.output()['predictions'].path))
-        #save_pickle(features, Path(self.output()['features'].path))
         save_pickle(prediction, Path(self.output()['predictions'].path))
-
-        #with self.output()['test_df'].open('w') as csv_file:
-        #    test.to_csv(csv_file, index = False)
 
 
 class GetSubmit(luigi.Task):
@@ -146,26 +127,11 @@ class GetSubmit(luigi.Task):
 
     def run(self):
 
-        #data_req = self.input()['data']
         test_req = self.input()['test']
-        #models_req = self.input()['trained_model']['models']
-        #features_req = self.input()['trained_model']['features']
         prediction_req = self.input()['trained_model']['predictions']
 
         test = load_csv(test_req.path)
-        #data = load_csv(data_req.path)
-        #models = load_pickle(models_req.path)
-        #features = load_pickle(features_req.path)
         predictions = load_pickle(prediction_req.path)
-
-        #predictions = np.zeros(shape=(len(test), len(models)))
-
-        #test = make_FE_features(test, data, features)
-
-        #for ind, model in enumerate(models):
-        #    predictions[:, ind] = model.predict(test.drop('ID_code', axis = 1))
-
-        #predictions = np.mean(predictions, axis=1)
 
         sub = pd.DataFrame({"ID_code": test.ID_code.values})
         sub["target"] = predictions
